@@ -4,3 +4,10 @@ spring:
     url: jdbc:mysql://localhost:3306/sky_take_out?useSSL=false&serverTimezone=UTC&characterEncoding=utf-8
     username: root
     password: 123456
+
+sky:
+  alioss:
+    endpoint: oss-cn-shanghai.aliyuncs.com
+    access-key-id: LTAI5tD3xmjgS7DB9cbCeUqc
+    access-key-secret: A8QGsIHujBVglDmyhAes4ELHBXk2am
+    bucket-name: sky-take-out-912
