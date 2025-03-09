@@ -90,10 +90,10 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         Page<Employee> page = employeeMapper.pageQuery(employeePageQueryDTO);
 
-        long total = page.getTotal();
-        List<Employee> records = page.getResult();
+//        long total = page.getTotal();
+//        List<Employee> records = page.getResult();
 
-        return new PageResult(total,records);
+        return new PageResult(page.getTotal(),page.getResult());
     }
 
     @Override
