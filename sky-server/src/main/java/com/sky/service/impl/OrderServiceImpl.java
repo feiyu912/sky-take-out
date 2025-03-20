@@ -1,5 +1,6 @@
 package com.sky.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.sky.constant.MessageConstant;
 import com.sky.context.BaseContext;
@@ -21,9 +22,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.net.http.WebSocket;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -41,11 +45,15 @@ public class OrderServiceImpl implements OrderService {
     @Autowired
     private WeChatPayUtil weChatPayUtil;
 
+
+
     @Transactional
     public OrderSubmitVO submitOrder(OrdersSubmitDTO ordersSubmitDTO) {
         AddressBook addressBook = addressBookMapper.getById(ordersSubmitDTO.getAddressBookId());
-        if (addressBook == null) {
+
+        if(addressBook == null) {
             throw new AddressBookBusinessException(MessageConstant.ADDRESS_BOOK_IS_NULL);
+
         }
 
         Long userId = BaseContext.getCurrentId();
@@ -58,7 +66,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Orders order = new Orders();
-        BeanUtils.copyProperties(ordersSubmitDTO, order);
+        BeanUtils.copyProperties(ordersSubmitDTO,order);
         order.setPhone(addressBook.getPhone());
         order.setAddress(addressBook.getDetail());
         order.setConsignee(addressBook.getConsignee());
@@ -82,7 +90,6 @@ public class OrderServiceImpl implements OrderService {
 
         shoppingCartMapper.deleteByUserId(userId);
 
-        // 构建并返回 OrderSubmitVO 对象
         OrderSubmitVO orderSubmitVO = OrderSubmitVO.builder()
                 .id(order.getId())
                 .orderNumber(order.getNumber())
@@ -90,7 +97,7 @@ public class OrderServiceImpl implements OrderService {
                 .orderTime(order.getOrderTime())
                 .build();
 
-        return orderSubmitVO; // 确保返回值
+        return orderSubmitVO;
     }
 
     public OrderPaymentVO payment(OrdersPaymentDTO ordersPaymentDTO) throws Exception {
@@ -98,57 +105,31 @@ public class OrderServiceImpl implements OrderService {
         Long userId = BaseContext.getCurrentId();
         User user = userMapper.getById(userId);
 
-        // 模拟支付成功的逻辑（仅在测试环境使用）
-        boolean isTestEnvironment = "test".equals(System.getProperty("spring.profiles.active"));
-        if (isTestEnvironment) {
-            log.info("跳过实际支付，直接模拟支付成功");
-            return simulatePaymentSuccess(ordersPaymentDTO.getOrderNumber());
-        }
+//        //调用微信支付接口，生成预支付交易单
+//        JSONObject jsonObject = weChatPayUtil.pay(
+//                ordersPaymentDTO.getOrderNumber(), //商户订单号
+//                new BigDecimal(0.01), //支付金额，单位 元
+//                "苍穹外卖订单", //商品描述
+//                user.getOpenid() //微信用户的openid
+//        );
+//
+//        if (jsonObject.getString("code") != null && jsonObject.getString("code").equals("ORDERPAID")) {
+//            throw new OrderBusinessException("该订单已支付");
+//        }
 
-        // 调用微信支付接口，生成预支付交易单
-        JSONObject jsonObject = weChatPayUtil.pay(
-                ordersPaymentDTO.getOrderNumber(), // 商户订单号
-                new BigDecimal(0.01), // 支付金额，单位元
-                "苍穹外卖订单", // 商品描述
-                user.getOpenid() // 微信用户的openid
-        );
-
-        if (jsonObject.getString("code") != null && jsonObject.getString("code").equals("ORDERPAID")) {
-            throw new OrderBusinessException("该订单已支付");
-        }
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("code", "ORDERPAID");
 
         OrderPaymentVO vo = jsonObject.toJavaObject(OrderPaymentVO.class);
         vo.setPackageStr(jsonObject.getString("package"));
 
-        return vo;
-    }
-
-    /**
-     * 模拟支付成功
-     *
-     * @param outTradeNo 商户订单号
-     * @return 模拟的支付成功结果
-     */
-    private OrderPaymentVO simulatePaymentSuccess(String outTradeNo) {
-        OrderPaymentVO vo = new OrderPaymentVO();
-        vo.setNonceStr("randomstring"); // 随机字符串
-        vo.setPaySign("PAYSIGNATURE"); // 签名
-        vo.setTimeStamp(String.valueOf(System.currentTimeMillis() / 1000)); // 时间戳（秒级）
-        vo.setSignType("MD5"); // 签名算法类型
-        vo.setPackageStr("prepay_id=1234567890"); // 统一下单接口返回的 prepay_id 参数值
-
-        // 模拟支付成功后，直接调用支付成功的业务逻辑
-        paySuccess(outTradeNo);
+        paySuccess(ordersPaymentDTO.getOrderNumber());
 
         return vo;
     }
 
-    /**
-     * 支付成功，修改订单状态
-     *
-     * @param outTradeNo 商户订单号
-     */
     public void paySuccess(String outTradeNo) {
+
         // 根据订单号查询订单
         Orders ordersDB = orderMapper.getByNumber(outTradeNo);
 
@@ -161,5 +142,14 @@ public class OrderServiceImpl implements OrderService {
                 .build();
 
         orderMapper.update(orders);
+
+        //通过websocket向客户端浏览器推送消息type orderId content
+        Map map = new HashMap();
+        map.put("type",1);//1.来电提醒 2.客户催单
+        map.put("orderId", orders.getId());
+        map.put("content", "订单号："+outTradeNo);
+
+        String json = JSON.toJSONString(map);
+
     }
 }
